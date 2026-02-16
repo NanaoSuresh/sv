@@ -1,0 +1,32 @@
+name: vplayer
+description: "Vplayer - AI-powered video player with real-time frame interpolation (MEMC)"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
+  file_picker: ^8.0.0+1
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.2.3
+  provider: ^6.1.2
+  path: ^1.9.0
+  screen_brightness: ^2.1.7
+  volume_controller: ^3.4.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
