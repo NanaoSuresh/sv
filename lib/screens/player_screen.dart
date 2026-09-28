@@ -9,7 +9,9 @@ import '../widgets/gesture_controls.dart';
 import '../widgets/memc_controls.dart';
 import '../widgets/playback_controls.dart';
 import '../widgets/player_top_bar.dart';
+import '../widgets/stats_overlay.dart';
 import '../widgets/track_selector_sheet.dart';
+import 'boost_fps_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
@@ -166,6 +168,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onSubtitleTap: () =>
                         _showSubtitleTrackSheet(context, state),
                     onRotateTap: _toggleOrientation,
+                    onStatsTap: state.toggleStats,
+                    onBoostFpsTap: state.currentFile != null
+                        ? () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => BoostFpsScreen(
+                                    filePath: state.currentFile!),
+                              ),
+                            )
+                        : null,
                   ),
                 ),
 
@@ -194,6 +206,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
               ],
+
+              // Stats overlay (always visible when enabled, even without controls)
+              if (state.showStats)
+                const Positioned(
+                  left: 8,
+                  bottom: 80,
+                  child: StatsOverlay(),
+                ),
 
               // MEMC panel
               if (_showMemcPanel && !isLocked)

@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -19,6 +20,14 @@ class PlayerState extends ChangeNotifier {
   double _estimatedFps = 0.0;
   PlaybackSettings _playbackSettings = const PlaybackSettings();
   bool _controlsLocked = false;
+  bool _showStats = false;
+
+  // mpv stats
+  String _videoSync = '';
+  String _displayFps = '';
+  String _vsyncRatio = '';
+  String _droppedFrames = '';
+  String _voFps = '';
 
   // Track info
   List<AudioTrack> _audioTracks = [];
@@ -37,6 +46,12 @@ class PlayerState extends ChangeNotifier {
   String get interpolationStatus => _interpolationService.statusText;
   PlaybackSettings get playbackSettings => _playbackSettings;
   bool get controlsLocked => _controlsLocked;
+  bool get showStats => _showStats;
+  String get videoSync => _videoSync;
+  String get displayFps => _displayFps;
+  String get vsyncRatio => _vsyncRatio;
+  String get droppedFrames => _droppedFrames;
+  String get voFps => _voFps;
   List<AudioTrack> get audioTracks => _audioTracks;
   List<SubtitleTrack> get subtitleTracks => _subtitleTracks;
   AudioTrack get currentAudioTrack => _currentAudioTrack;
@@ -90,27 +105,70 @@ class PlayerState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Get the device's actual display refresh rate from Flutter.
+  double get _displayRefreshRate {
+    try {
+      final display = ui.PlatformDispatcher.instance.displays.firstOrNull;
+      if (display != null && display.refreshRate > 0) {
+        return display.refreshRate;
+      }
+    } catch (_) {}
+    return 60.0;
+  }
+
   Future<void> _setMpvProperty(String name, String value) async {
     try {
       await (player.platform as dynamic).setProperty(name, value);
     } catch (_) {}
   }
 
+  Future<String> _getMpvProperty(String name) async {
+    try {
+      final val = await (player.platform as dynamic).getProperty(name);
+      return val is String ? val : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   Future<void> _updateFpsEstimate() async {
     try {
-      final fps =
-          await (player.platform as dynamic).getProperty('estimated-vf-fps');
-      if (fps is String) {
-        _estimatedFps = double.tryParse(fps) ?? 0.0;
-      }
+      final fps = await _getMpvProperty('estimated-vf-fps');
+      _estimatedFps = double.tryParse(fps) ?? 0.0;
       notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> refreshStats() async {
+    _videoSync = await _getMpvProperty('video-sync');
+
+    // mpv's display-fps may be N/A through media_kit's surface,
+    // so fall back to Flutter's detected display refresh rate
+    final mpvDisplayFps = await _getMpvProperty('display-fps');
+    if (mpvDisplayFps.isNotEmpty &&
+        (double.tryParse(mpvDisplayFps) ?? 0) > 0) {
+      _displayFps = mpvDisplayFps;
+    } else {
+      _displayFps = _displayRefreshRate.toStringAsFixed(0);
+    }
+
+    _vsyncRatio = await _getMpvProperty('vsync-ratio');
+    _droppedFrames = await _getMpvProperty('frame-drop-count');
+    _voFps = await _getMpvProperty('estimated-display-fps');
+    final fps = await _getMpvProperty('estimated-vf-fps');
+    _estimatedFps = double.tryParse(fps) ?? 0.0;
+    notifyListeners();
+  }
+
+  void toggleStats() {
+    _showStats = !_showStats;
+    notifyListeners();
   }
 
   Future<void> openFile(String path) async {
     _currentFile = path;
     await player.open(Media(path));
-    await _interpolationService.applyToPlayer(player);
+    await _interpolationService.applyToPlayer(player, displayRefreshRate: _displayRefreshRate);
     _applyPlaybackSettings();
     notifyListeners();
   }
@@ -118,7 +176,7 @@ class PlayerState extends ChangeNotifier {
   Future<void> openUrl(String url) async {
     _currentFile = url;
     await player.open(Media(url));
-    await _interpolationService.applyToPlayer(player);
+    await _interpolationService.applyToPlayer(player, displayRefreshRate: _displayRefreshRate);
     _applyPlaybackSettings();
     notifyListeners();
   }
@@ -140,7 +198,7 @@ class PlayerState extends ChangeNotifier {
 
   Future<void> updateInterpolation(InterpolationSettings settings) async {
     _interpolationService.updateSettings(settings);
-    await _interpolationService.applyToPlayer(player);
+    await _interpolationService.applyToPlayer(player, displayRefreshRate: _displayRefreshRate);
     await _settingsService.saveSettings(settings);
     notifyListeners();
   }

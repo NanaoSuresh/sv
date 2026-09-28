@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import '../models/player_state.dart';
+import 'boost_fps_screen.dart';
 import 'player_screen.dart';
 import 'settings_screen.dart';
 
@@ -153,6 +154,26 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 240,
+                height: 56,
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickFileForBoost(context),
+                  icon: const Icon(Icons.rocket_launch, size: 24),
+                  label: const Text(
+                    'Boost FPS',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF6C63FF),
+                    side: const BorderSide(color: Color(0xFF6C63FF)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -172,6 +193,21 @@ class HomeScreen extends StatelessWidget {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const PlayerScreen()),
+      );
+    }
+  }
+
+  Future<void> _pickFileForBoost(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+    );
+    if (result != null && result.files.single.path != null) {
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BoostFpsScreen(filePath: result.files.single.path!),
+        ),
       );
     }
   }

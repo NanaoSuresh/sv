@@ -10,6 +10,8 @@ class PlayerTopBar extends StatelessWidget {
   final VoidCallback onAudioTap;
   final VoidCallback onSubtitleTap;
   final VoidCallback? onRotateTap;
+  final VoidCallback? onStatsTap;
+  final VoidCallback? onBoostFpsTap;
 
   const PlayerTopBar({
     super.key,
@@ -20,6 +22,8 @@ class PlayerTopBar extends StatelessWidget {
     required this.onAudioTap,
     required this.onSubtitleTap,
     this.onRotateTap,
+    this.onStatsTap,
+    this.onBoostFpsTap,
   });
 
   @override
@@ -76,6 +80,24 @@ class PlayerTopBar extends StatelessWidget {
                 tooltip: 'Audio Track',
                 onPressed: onAudioTap,
               ),
+
+              // Boost FPS
+              if (onBoostFpsTap != null)
+                IconButton(
+                  icon: const Icon(Icons.rocket_launch_outlined,
+                      color: Colors.white70, size: 22),
+                  tooltip: 'Boost FPS',
+                  onPressed: onBoostFpsTap,
+                ),
+
+              // Stats toggle
+              if (onStatsTap != null)
+                IconButton(
+                  icon: const Icon(Icons.analytics_outlined,
+                      color: Colors.white70, size: 22),
+                  tooltip: 'Stats',
+                  onPressed: onStatsTap,
+                ),
 
               // Rotate screen
               if (onRotateTap != null)

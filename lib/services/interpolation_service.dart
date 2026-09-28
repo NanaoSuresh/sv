@@ -14,57 +14,64 @@ class InterpolationService {
     await (player.platform as dynamic).setProperty(name, value);
   }
 
-  /// Apply interpolation using mpv's GPU-based temporal interpolation.
+  /// Apply frame interpolation using mpv's minterpolate video filter.
   ///
-  /// How this works:
-  /// - `video-sync=display-resample` tells mpv to resample the video to match
-  ///   the display's refresh rate (e.g. 60Hz or 120Hz).
-  /// - `interpolation=yes` enables temporal interpolation between frames,
-  ///   so mpv generates smooth intermediate frames in the GPU shader.
-  /// - `tscale` controls the temporal scaling algorithm used.
-  /// - `override-display-fps` forces mpv to target a specific FPS.
+  /// Why minterpolate instead of mpv's --interpolation flag:
+  /// mpv's GPU temporal interpolation (--interpolation --video-sync=display-resample)
+  /// requires direct vsync control over the display. On Android, media_kit renders
+  /// to a Surface consumed by Flutter's Texture widget, so mpv has no vsync timing.
+  /// The result: --interpolation silently does nothing visible.
   ///
-  /// This does NOT use CPU video filters (minterpolate is too heavy for mobile).
-  /// It keeps hwdec=auto so frames stay on GPU — no gralloc copy issues.
-  Future<void> applyToPlayer(Player player) async {
+  /// minterpolate is a CPU video filter that ACTUALLY generates new intermediate
+  /// frames using motion estimation. It outputs real 60fps frames that are visible
+  /// regardless of the rendering pipeline.
+  ///
+  /// Trade-off: requires software decoding (hwdec=no) so the CPU filter chain
+  /// can access frames. Performance mode (blend) is lightweight. Quality mode
+  /// (mci) is heavier but produces better results.
+  Future<void> applyToPlayer(Player player, {double displayRefreshRate = 60.0}) async {
     if (_settings.mode == InterpolationMode.off) {
       await _setMpvProperty(player, 'vf', '');
       await _setMpvProperty(player, 'interpolation', 'no');
       await _setMpvProperty(player, 'video-sync', 'audio');
       await _setMpvProperty(player, 'hwdec', 'auto');
+      await _setMpvProperty(player, 'override-display-fps', '0');
       return;
     }
 
-    // Keep full hardware decoding — no auto-copy needed.
-    // GPU temporal interpolation works directly with hwdec output.
-    await _setMpvProperty(player, 'hwdec', 'auto');
-
-    // Remove any CPU video filters
-    await _setMpvProperty(player, 'vf', '');
-
-    // Tell mpv to resample video output to match the display/target rate
-    await _setMpvProperty(player, 'video-sync', 'display-resample');
-
-    // Enable GPU temporal interpolation between frames
-    await _setMpvProperty(player, 'interpolation', 'yes');
-
-    // Force mpv to target our desired FPS regardless of actual display rate
     final targetFps = _settings.targetFpsValue;
-    await _setMpvProperty(player, 'override-display-fps', '$targetFps');
 
-    // Temporal scaling algorithm:
-    // Quality mode: mitchell — high-quality cubic interpolation, sharper
-    // Performance mode: oversample — lightweight, duplicates with blending
-    final tscale = _settings.mode == InterpolationMode.quality
-        ? 'mitchell'
-        : 'oversample';
-    await _setMpvProperty(player, 'tscale', tscale);
+    // Software decoding is REQUIRED for minterpolate to work.
+    // With hwdec=auto or auto-copy, frames either stay on GPU (filter skipped)
+    // or cause gralloc buffer lock errors on Mali GPUs.
+    // hwdec=no decodes on CPU so the filter chain can process frames.
+    await _setMpvProperty(player, 'hwdec', 'no');
 
-    // tscale-window controls the interpolation window size.
-    // Higher = smoother but more GPU work. Scale with motion sensitivity.
-    final windowRadius = 1.0 + (_settings.motionSensitivity * 2.0);
-    await _setMpvProperty(
-        player, 'tscale-radius', windowRadius.toStringAsFixed(1));
+    // Build the minterpolate filter string
+    String vf;
+    if (_settings.mode == InterpolationMode.performance) {
+      // blend mode: simply blends adjacent frames
+      // Very lightweight, minimal CPU overhead
+      // Produces slight ghosting on fast motion but smooth overall
+      vf = 'minterpolate=fps=$targetFps:mi_mode=blend';
+    } else {
+      // mci mode: motion compensated interpolation (true MEMC)
+      // Analyzes motion vectors and generates proper intermediate frames
+      // mc_mode=aobmc: adaptive overlapped block motion compensation
+      // me_mode=bidir: bidirectional motion estimation for accuracy
+      // mb_size: macroblock size — smaller = finer detail but heavier
+      //   Scale with sensitivity: high sensitivity = smaller blocks
+      final mbSize = (16 - (_settings.motionSensitivity * 8)).round().clamp(8, 16);
+      vf = 'minterpolate=fps=$targetFps:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:mb_size=$mbSize';
+    }
+
+    await _setMpvProperty(player, 'vf', vf);
+
+    // Standard audio sync — no display-resample needed since the filter
+    // outputs real frames at the target FPS
+    await _setMpvProperty(player, 'video-sync', 'audio');
+    await _setMpvProperty(player, 'interpolation', 'no');
+    await _setMpvProperty(player, 'override-display-fps', '0');
   }
 
   String get statusText {
